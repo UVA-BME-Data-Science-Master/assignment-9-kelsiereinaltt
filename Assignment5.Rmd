@@ -1,0 +1,621 @@
+---
+title: "Assignment 5"
+author: "Kelsie Reinaltt"
+date: "10/02/2018"
+html_document: default
+--
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(modelr)
+options(na.action = na.warn)
+library(nycflights13)
+library(lubridate)
+library(ggplot2)
+library(broom)
+
+library(tidyverse)
+library(stats)
+library(modelr)
+options(na.action = na.warn)
+
+library(modelr)
+library(tidyverse)
+library(ggbeeswarm)
+library(gapminder)
+```
+
+
+# Exercises 23.2.1 
+#### The graphs show that there are not large outliers, and the slopes are similar among all the graphs. The t-distribution has heavier tails than the normal distribution, providing reason for the larger outliers. 
+```{r}
+sim1a <- tibble(
+  x = rep(1:10, each = 3),
+  y = x * 1.5 + 6 + rt(length(x), df = 2)
+)
+
+ggplot(sim1a, aes(x=x,y=y))+geom_point() + geom_smooth(method = "lm", se = FALSE)
+
+simt <- function(i) {
+  tibble(
+    x = rep(1:10, each = 3),
+    y = x * 1.5 + 6 + rt(length(x), df = 2),
+    .id = i
+  )
+}
+
+sims <- map_df(1:12, simt)
+
+ggplot(sims, aes(x = x, y = y)) +
+  geom_point() +
+  geom_smooth(method = "lm", colour = "red") +
+  facet_wrap(~ .id, ncol = 4)
+
+sim_norm <- function(i) {
+  tibble(
+    x = rep(1:10, each = 3),
+    y = x * 1.5 + 6 + rnorm(length(x)),
+    .id = i
+  )
+}
+
+simdf_norm <- map_df(1:12, sim_norm)
+
+ggplot(simdf_norm, aes(x = x, y = y)) +
+  geom_point() +
+  geom_smooth(method = "lm", colour = "red") +
+  facet_wrap(~ .id, ncol = 4)
+
+tibble(
+  x = seq(-5, 5, length.out = 100),
+  normal = dnorm(x),
+  student_t = dt(x, df = 2)
+) %>%
+  gather(distribution, density, -x) %>%
+  ggplot(aes(x = x, y = density, colour = distribution)) +
+  geom_line()
+
+pnorm(2, lower.tail = FALSE)
+pt(2, df = 2, lower.tail = FALSE)
+
+```
+
+## Question 2
+```{r}
+measure_distance_ls <- function(mod, data) {
+  diff <- data$y - (mod[1] + mod[2] * data$x)
+  sqrt(mean(diff ^ 2))
+}
+
+best <- optim(c(0, 0), measure_distance_ls, data = sim1a)
+best$par
+
+```
+
+## Question 3
+#### When three values exist, then for any values a[1] = a1 and a[3] = a3, any other values of a[1] and a[3] where a[1] + a[3] == (a1 + a3) will have the same fit. We can thus find different optimal values for the model, creating no one optimal data set. 
+
+```{r}
+model3 <- function(a, data) {
+  a[1] + data$x * a[2] + a[3]
+}
+
+measure_distance_3 <- function(a, data) {
+  diff <- data$y - model3(a, data)
+  sqrt(mean(diff ^ 2))
+}
+best3a <- optim(c(0, 0, 0), measure_distance_3, data = sim1)
+
+best3a$par
+best3b <- optim(c(0, 0, 1), measure_distance_3, data = sim1)
+best3b$par
+
+best3c <- optim(c(0, 0, 5), measure_distance_3, data = sim1)
+best3c$par
+
+```
+
+
+# 23.3.3 EXERCISES
+
+## Question 1
+#### The prediction of the loess method are the same as the method for geom_smooth as geom_smooth uses loess. However, the loess model has smaller residuals within the sample, not in extrapolated data. Both functions produce a nonlinear smooth line through the data, with these differences. 
+```{r}
+
+sim1_loess <- loess(y ~ x, data = sim1)
+sim1_lm <- lm(y ~ x, data = sim1)
+
+grid_loess <- sim1 %>%
+  add_predictions(sim1_loess)
+
+sim1 <- sim1 %>%
+  add_residuals(sim1_lm) %>%
+  add_predictions(sim1_lm) %>%
+  add_residuals(sim1_loess, var = "resid_loess") %>%
+  add_predictions(sim1_loess, var = "pred_loess")
+
+plot_sim1_loess <-
+  ggplot(sim1, aes(x = x, y = y)) +
+  geom_point() +
+  geom_line(aes(x = x, y = pred), data = grid_loess, colour = "red")
+plot_sim1_loess
+
+plot_sim1_loess +
+  geom_smooth(method = "loess", colour = "blue", se = FALSE, alpha = 0.20)
+ggplot(sim1, aes(x = x)) +
+  geom_ref_line(h = 0) +
+  geom_point(aes(y = resid)) +
+  geom_point(aes(y = resid_loess), colour = "red")
+```
+
+
+## Question 2
+#### Gather_predictions and spread_predictions allow for predictions from multuple models to be added together. Add- adds only a single model at a time, while gather adds predictions stacks the results from multiple models and adds a column to the tibble with the model name.
+#### Spread predictions adds predictions from multiple models with multple columns indicating the various predictions from each model. spread_predictions is equivalent to running spread after running gather_predictions().
+
+```{r}
+sim1_mod <- lm(y ~ x, data = sim1)
+grid <- sim1 %>%
+  data_grid(x)
+grid %>%
+  add_predictions(sim1_mod, var = "pred_lm") %>%
+  add_predictions(sim1_loess, var = "pred_loess")
+grid %>%
+  gather_predictions(sim1_mod, sim1_loess)
+grid %>%
+  spread_predictions(sim1_mod, sim1_loess)
+grid %>%
+  gather_predictions(sim1_mod, sim1_loess) %>%
+  spread(model, pred)
+
+```
+
+## Question 3
+#### Geom_ref_line adds a reference line to the plot. This comes from the package ggplot2- when it is run, it runs similarly to geom_hline() or geom_vline(). Putting a reference line at zero for residuals has value because residuals should be centered at zero with a constant distrubution over x with no correlation
+```{r}
+?geom_ref_line
+```
+
+## Question 4
+#### Showing the absolute values of the residuals makes it easier to view the spread of the residuals. The model assumes that the residuals have mean zero, and using the absolute values of the residuals effectively doubles the number of residuals. However, using the absolute values of residuals gets rid  of the sign, meaning that the frequency polygon cannot show whether the model over- or under-estimates the residuals.
+```{r}
+sim1_mod <- lm(y ~ x, data = sim1)
+
+sim1 <- sim1 %>%
+  add_residuals(sim1_mod)
+
+ggplot(sim1, aes(x = abs(resid))) +
+  geom_freqpoly(binwidth = 0.5)
+```
+
+
+## 23.4.5 EXERCISES
+
+## Question 1
+#### The predictions do not change for the model with or without an intercept, nor does the model. The model equation just doesnt have an intercept calculated, which does not alter the predicted values.
+```{r}
+mod2a <- lm(y ~ x - 1, data = sim2)
+mod2 <- lm(y ~ x, data = sim2)
+grid <- sim2 %>%
+  data_grid(x) %>%
+  spread_predictions(mod2, mod2a)
+grid
+```
+#### The predictions do not change for the model with or without an intercept, nor does the model. The model equation just doesnt have an intercept calculated, which does not alter the predicted values. 
+
+## Question 2
+#### The asterisk * is good shorthand for an interaction since an interaction between x1 and x2 includes terms for x1, x2, and the product of x1 and x2.
+```{r}
+x3 <- model_matrix(y ~ x1 * x2, data = sim3)
+x3
+all(x3[["x1:x2b"]] == (x3[["x1"]] * x3[["x2b"]]))
+all(x3[["x1:x2c"]] == (x3[["x1"]] * x3[["x2c"]]))
+all(x3[["x1:x2d"]] == (x3[["x1"]] * x3[["x2d"]]))
+x4 <- model_matrix(y ~ x1 * x2, data = sim4)
+x4
+all(x4[["x1"]] * x4[["x2"]] == x4[["x1:x2"]])
+
+
+```
+
+## Question 3
+```{r}
+mod1 <- lm(y ~ x1 + x2, data = sim3)
+mod2 <- lm(y ~ x1 * x2, data = sim3)
+model_matrix_mod1 <- function(.data) {
+  mutate(.data,
+         `x2b` = as.numeric(x2 == "b"),
+         `x2c` = as.numeric(x2 == "c"),
+         `x2d` = as.numeric(x2 == "d"),
+         `x1:x2b` = x1 * x2b,
+         `x1:x2c` = x1 * x2c,
+         `x1:x2d` = x1 * x2d) %>%
+    select(x1, x2b, x2c, x2d, `x1:x2b`, `x1:x2c`, `x1:x2d`)
+}
+model_matrix_mod1(sim3)
+
+model_matrix_mod2 <- function(.data) {
+  mutate(.data, `x1:x2` = x1 * x2) %>%
+    select(x1, x2, `x1:x2`)
+}
+model_matrix_mod2(sim4)
+```
+
+
+
+## Question 4
+#### The estimates, resideuals, frequency plots, and absolute values of the residuals for the data do not show much difference between the residuals for the model. However, the second model has fewer residuals in the tails of the distribution. We can confirm this by checkin gthe standard deviation of the residuals. 
+```{r}
+mod1 <- lm(y ~ x1 + x2, data = sim4)
+mod2 <- lm(y ~ x1 * x2, data = sim4)
+
+sim4_mods <- gather_residuals(sim4, mod1, mod2)
+
+ggplot(sim4_mods, aes(x = resid, colour = model)) +
+  geom_freqpoly(binwidth = 0.5) +
+  geom_rug()
+ggplot(sim4_mods, aes(x = abs(resid), colour = model)) +
+  geom_freqpoly(binwidth = 0.5) +
+  geom_rug()
+
+```
+#### this shows that the standard deviation of the residuals of mod2 is smaller than that of mod1.
+```{r}
+sim4_mods %>%
+  group_by(model) %>%
+  summarise(resid = sd(resid))
+```
+
+
+
+# Exercises 24.2.3
+## Question 1
+#### Brighter indicates a higher count, and these brighter strips are closer to integer values. Thus, more diamonds have a carat value that is close to an integer. 
+
+## Question 2
+#### This would imply that an x % increase in carat yields an a sub x percent increase in price. 
+
+## Question 3
+#### As shown below, the diamonds with the very high and very low residuals have differing qualities. Thus, I would not say that there is a specific quality or pricing error that is associated with these residuals. 
+```{r}
+diamonds2 <-
+  diamonds %>% 
+  mutate(lprice = log2(price),
+         lcarat = log2(carat))
+
+mod1 <- lm(lprice ~ lcarat + color + clarity + cut, data = diamonds2)
+
+bottom <-
+  diamonds2 %>% 
+  add_residuals(mod1) %>% 
+  arrange(resid) %>% 
+  slice(1:10)
+
+top <-
+  diamonds2 %>% 
+  add_residuals(mod1) %>% 
+  arrange(-resid) %>% 
+  slice(1:10)
+
+bind_rows(bottom, top) %>% 
+  select(price, carat, resid)
+```
+
+## Question 4
+#### On average, the error is 10-15%. The approximate 95% range of residuals is +/- 30%.s is less than 50% error, but could be better. 
+```{r}
+diamonds2 <- diamonds %>% 
+  filter(carat <= 2.5) %>% 
+  mutate(lprice = log2(price), lcarat = log2(carat))
+
+mod_diamond <- lm(lprice ~ lcarat, data = diamonds2)
+mod_diamond2 <- lm(lprice ~ lcarat + color + cut + clarity, data = diamonds2)
+
+
+diamonds2 %>%
+  add_predictions(mod_diamond2) %>%
+  add_residuals(mod_diamond2) %>%
+  summarise(sq_err = sqrt(mean(resid^2)),
+            abs_err = mean(abs(resid)),
+            p975_err = quantile(resid, 0.975),
+            p025_err = quantile(resid, 0.025))
+```
+
+
+# Exercises 24.3.5 
+
+## Question 1
+#### There are fewer than expected flights on these days, the next day is a Monday holiday - Jan 20 (MLK Day), May 26 (Memorial Day), Sep 1 (Labor Day).
+
+## Question 2
+#### These days are close to holidays Thanksgiving and New Years.This could generalize to subsequent years as days that are close to holidays will have higher travel rates. 
+```{r}
+
+daily <- flights %>% 
+  mutate(date = make_date(year, month, day)) %>% 
+  group_by(date) %>% 
+  summarise(n = n())
+daily
+
+daily <- daily %>% 
+  mutate(wday = wday(date, label = TRUE))
+
+library(splines)
+mod <- MASS::rlm(n ~ wday * ns(date, 5), data = daily)
+
+daily <- flights %>% 
+  mutate(date = make_date(year, month, day)) %>% 
+  group_by(date) %>% 
+  summarise(n = n())
+
+daily <- daily %>% 
+  mutate(wday = wday(date, label = TRUE))
+
+daily <- daily %>% 
+  add_residuals(mod)
+
+daily %>% 
+  top_n(3, resid)
+
+```
+
+
+## Question 3
+#### The model with terms x Saturday has higher residuals in the fall, and lower residuals in the spring than the model with all interactions. Using overall model comparison terms, mod4 has a lower R squared and regression. More importantly for prediction purposes, it has a higher AIC - which is an estimate of the out of sample error.
+```{r}
+term <- function(date) {
+  cut(date, 
+    breaks = ymd(20130101, 20130605, 20130825, 20140101),
+    labels = c("spring", "summer", "fall") 
+  )
+}
+daily <- daily %>% 
+  mutate(term = term(date)) 
+
+mod2 <- lm(n ~ wday * term, data = daily)
+
+compute_vars <- function(data) {
+  data %>% 
+    mutate(
+      term = term(date), 
+      wday = wday(date, label = TRUE)
+    )
+}
+
+daily <- daily %>%
+  mutate(wday2 =
+         case_when(.$wday == "Sat" & .$term == "summer" ~ "Sat-summer",
+         .$wday == "Sat" & .$ term == "fall" ~ "Sat-fall",
+         .$wday == "Sat" & .$term == "spring" ~ "Sat-spring",
+         TRUE ~ as.character(.$wday)))
+mod4 <- lm(n ~ wday2, data = daily)
+
+daily %>%
+  gather_residuals(sat_term = mod4, all_interact = mod2) %>%
+  ggplot(aes(date, resid, colour = model)) +
+    geom_line(alpha = 0.75)
+
+daily %>%
+  spread_residuals(sat_term = mod4, all_interact = mod2) %>%
+  mutate(resid_diff = sat_term - all_interact) %>%
+  ggplot(aes(date, resid_diff)) +
+    geom_line(alpha = 0.75)
+
+glance(mod4) %>% select(r.squared, sigma, AIC, df)
+
+glance(mod2) %>% select(r.squared, sigma, AIC, df)
+```
+
+ 
+## Question 4
+#### Residuals are listed below.
+```{r}
+daily <- daily %>%
+  mutate(wday3 =
+         case_when(
+           .$date %in% lubridate::ymd(c(20130101, # new years
+                                        20130121, # mlk
+                                        20130218, # presidents
+                                        20130527, # memorial
+                                        20130704, # independence
+                                        20130902, # labor
+                                        20131028, # columbus
+                                        20131111, # veterans
+                                        20131128, # thanksgiving
+                                        20131225)) ~
+             "holiday",
+           .$wday == "Sat" & .$term == "summer" ~ "Sat-summer",
+           .$wday == "Sat" & .$ term == "fall" ~ "Sat-fall",
+           .$wday == "Sat" & .$term == "spring" ~ "Sat-spring",
+           TRUE ~ as.character(.$wday)))
+
+mod5 <- lm(n ~ wday3, data = daily)
+
+daily %>%
+  spread_residuals(mod5) %>%
+  arrange(desc(abs(resid))) %>%
+  slice(1:20) %>% select(date, wday, resid)
+```
+
+## Question 5
+#### There are only 4-5 observations per parameter since only there are only 4-5 weekdays in a given month.
+
+## Question 6
+#### This would be better if n changes slowly; there is overestimation in the fall months. 
+
+```{r}
+mod5 <- lm(n ~ wday + splines::ns(date, 5), data = daily)
+daily %>%
+  gather_residuals(mod2,mod5)%>%
+  arrange(date)%>%
+  ggplot(aes(date,resid,color = model))+
+  geom_line(alpha = 0.75)
+```
+
+## Question 7
+#### Below is the distribution of flights for different times. 
+
+```{r}
+dist <- function(distance) {
+  cut(distance, 
+    breaks = seq(min(flights$distance,na.rm = TRUE),max(flights$distance,na.rm = TRUE),length.out = 10),
+    labels = letters[1:9]
+  )
+}
+
+time <- function(air_time){
+    cut(air_time, 
+    breaks = seq(min(flights$air_time,na.rm = TRUE),max(flights$air_time,na.rm = TRUE),length.out = 10),
+    labels = letters[1:9]
+  )
+}
+
+dep <- function(dep_time){
+    cut(dep_time, 
+    breaks = seq(0000,2400,length.out = 9),
+    labels = c("0-3","3-6","6-9","9-12","12-15","15-18","18-21","21-24")
+  )
+}
+
+flights <- flights %>%
+  mutate(dist = dist(distance)) %>%
+  mutate(time = time(air_time)) %>%
+  mutate(dep = dep(dep_time))%>%
+  mutate(wday= wday(make_date(year, month, day), label = TRUE))
+
+flights %>%
+  ggplot() + 
+  geom_bar(aes(dep,color = dist),position = "dodge") +
+  facet_wrap(~wday, nrow=3)
+```
+
+## Question 8
+```{r}
+monday_first <- function(x) {
+  forcats::fct_relevel(x, levels(x)[-1])  
+}
+
+daily <- daily %>%
+  mutate(wday = wday(date, label = TRUE))
+ggplot(daily, aes(monday_first(wday), n)) +
+  geom_boxplot() +
+  labs(x = "Day of Week", y = "Number of flights")
+```
+
+# Exercises 25.2.5
+
+## Question 1
+#### yes, the tred can be better fit with a quadratic polynomial. If the coefficient of the square term is negative, the relationship is concave. If the coefficient of the square term is positive, the relationship is convex.
+```{r}
+# modquad <- function(df){
+#   lm(data = df, lifeExp ~ poly(year,2))
+# }
+#  
+#  gapminder %>%
+#    mutate(year = year - mean(year)) %>%
+#    group_by(continent,country)%>%
+#    nest() %>%
+#    mutate(model = map(data, modquad)) %>%
+#    mutate(glance = map(model, broom::glance))%>%
+#    unnest(glance) %>%
+#    ggplot(aes(x= continent, y =r.squared,color = continent)) + 
+#    geom_beeswarm()
+#  
+#  #check residuals
+#  unnest(quad, resids) %>%
+#    ggplot(aes(group = country))+
+#    geom_line(aes(x = year, y = resid))+
+#    facet_wrap(~continent, nrow = 2)
+#  
+#  #check quality
+#  
+#  quad %>% 
+#    mutate(glance = map(model, broom::glance))%>%
+#    unnest(glance, .drop = TRUE)%>%
+#    arrange(r.squared)
+#  
+#  quad %>%
+#    mutate(glance = map(model, broom::glance))%>%
+#    unnest(glance, .drop = TRUE) %>%
+#    ggplot(aes(r.squared)) + 
+#    geom_histogram(bins = 100)
+
+```
+
+## Question 2
+```{r}
+modquad <- function(df){
+  lm(data = df, lifeExp ~ poly(year,2))
+}
+gapminder %>%
+  mutate(year = year - mean(year)) %>%
+  group_by(continent,country)%>%
+  nest() %>%
+  mutate(model = map(data, modquad)) %>%
+  mutate(glance = map(model, broom::glance))%>%
+  unnest(glance) %>%
+  ggplot(aes(x= continent, y =r.squared,color = continent)) + 
+  geom_beeswarm()
+```
+
+## Question 3
+#### yes, there is a way to use nnest() to avoid creating a data frame with one row per country semi-joined to the original dataset. The following code will display the data for the countries wit the worst model fits:
+```{r}
+gapminder %>%
+  mutate(year = year - mean(year)) %>%
+  group_by(country)%>%
+  nest() %>%
+  mutate(model = map(data, modquad)) %>%
+  mutate(glance = map(model, broom::glance))%>%
+  unnest(glance) %>%
+  unnest(data) %>%
+  semi_join(gapminder, by = c("pop","country")) %>%
+  arrange(r.squared) %>%
+  filter(r.squared %in% unique(r.squared)[1:6])%>%
+  ggplot(aes(x = year + mean(gapminder$year), y = log(pop) )) +
+  geom_line(aes(color = country))
+```
+
+
+# Exercise 25.4.5
+
+## Question 1
+#### quantile, strplit, and many of the other stringr functions.
+
+## Question 2
+#### Some examples of summary functions that return multiple values are range() and fivenum(). Other examples include IQR, quartile and confint.
+
+```{r}
+range(mtcars$mpg)
+fivenum(mtcars$mpg)
+```
+
+## Question 3 
+#### The particular quantiles, such as 0%,25%,50%,75%,100% are missing. quantile() returns these quantiles in the names of the vector. The names of the vectors are not useful here because the unnest function drops the names of the vectors.
+```{r}
+mtcars%>%
+  group_by(cyl)%>%
+  summarize(q =list(quantile(mpg)))%>%
+  unnest()
+
+quantile(mtcars$mpg)
+```
+
+## Question 4
+#### The give code applies the list function to each variable of the grouped data frames, which is useful if you want different columns to have different summarize functions. It also seems useful to have all the observations of each variable for each group. 
+```{r}
+mtcars %>% 
+  group_by(cyl) %>% 
+  summarise_each(funs(list))
+```
+
+
+# 25.5.3
+
+## Question 1
+#### The lengths() function allows you to get the lengths of each element in a list, which is useful for testing whether all elements in a list-column are the same length. One application of lengths() is to determine how many atomic vector columns to create.It is also a replacement for something like map_int(x, length) or sapply(x, length).
+
+## Question 2
+#### The most common types of vectors are as follows: character, factor, integer, logical, numeric. All of the mentioned vectors are atomic. List is different because it is not atomic (can contain other lists/vectors).
+
