@@ -96,7 +96,7 @@ y <- matrix(c(10,5,7,4),4,1)
 solve(X)%*%y
 ```
 
-#### c is the 3rd row (there is only one column), so it is equal to -0.9949558. 
+#### c is the 3rd row (there is only one column), so it is equal to -0.9949558. ** -1.5 answer is -.8849 (you wrote it incorrectly)
 
 ## Question 3
 
@@ -176,6 +176,7 @@ fitted = X %*% beta
 fitted[ 3:4, ]
 ```
 
+## ** -2.5 answer is 13 
 
 ## Question 4
 
@@ -236,7 +237,7 @@ round(mean(betahat),1)
 sd(betahat)
 
 ```
-#### The standard error of this estimate is 0.2151166.
+#### The standard error of this estimate is 0.2151166. ** -2.5 SE should be .429
 
 
 ## Question 3
@@ -257,8 +258,7 @@ betahat <- t(betahat)
 sd(betahat)
 
 ```
-#### The standard deviation for the slope estimate appears to be within 17.5-17.7 inches range
-
+#### The standard deviation for the slope estimate appears to be within 17.5-17.7 inches range ** -2.5 SD should be .124
 
 ## Question 4 
 
@@ -266,6 +266,8 @@ sd(betahat)
 mean( (betahat[,1]-mean(betahat[,1] ))* (betahat[,2]-mean(betahat[,2])))
 ```
 The covariance appears to be closes to 0. 
+
+## ** -2.5 answer is C
 
 # Pages 177-178 Questions
 
@@ -366,7 +368,7 @@ fit = lm(y ~ species + condition)
 contrast(fit, list(species="B",condition="control"), list(species="A",condition="treated"))$X
 ```
 
-#### The contrast vector should be 0 -1 1. 
+#### The contrast vector should be 0 -1 1. ** -2.5 contrast vector is 0 1 -1
 
 ## Question 2
 
@@ -482,5 +484,5 @@ betas[which(rss==themin),]
 
 
 ```
-#### As there is no single minimum, all of the above are the smallest Least Square Residuals.
+#### As there is no single minimum, all of the above are the smallest Least Square Residuals. ** -2.5 RSS is 2
 
