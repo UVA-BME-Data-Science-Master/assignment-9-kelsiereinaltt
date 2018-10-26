@@ -1,0 +1,664 @@
+---
+title: "BME 4550 Assignment 7"
+author: "Kelsie Reinaltt"
+date: "October 23, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+library(devtools)
+install_github("genomicsclass/GSE5859Subset")
+library(GSE5859Subset)
+data(GSE5859Subset)
+```
+
+# Inference for High Dimensional Data
+
+## Exercises 1
+
+###1. How many samples where processed on 2005-06-27?
+```{r}
+sampleInfo %>%
+  filter(date == "2005-06-27") %>%
+  summarise(N = n()) %>%
+  print
+```
+### 2. Question: How many of the genes represented in this particular technology are on chromosome Y?
+```{r}
+geneAnnotation %>%
+  filter(CHR == "chrY") %>%
+  summarise(N = n()) %>%
+  print
+```
+### 3. What is the log expression value of the for gene ARPC1A on the one subject that we measured on 2005-06-10 ?
+
+```{r}
+filename = sampleInfo %>%
+  filter(date == "2005-06-10") %$% filename
+
+probeid = geneAnnotation %>%
+  filter(SYMBOL == "ARPC1A") %$% PROBEID
+
+as.data.frame(geneExpression) %>%
+  add_rownames() %>%
+  filter(rowname == probeid) %>%
+  select(rowname, contains(filename)) %>%
+  print
+```
+
+## first chapter, exercises 2
+
+
+```{r}
+set.seed(1)
+library(downloader)
+url = "https://raw.githubusercontent.com/genomicsclass/dagdata/master/inst/extda\
+ta/femaleControlsPopulation.csv"
+filename = "femaleControlsPopulation.csv"
+if (!file.exists(filename)) download(url,destfile=filename)
+population = read.csv(filename)
+pvals <- replicate(1000,{
+control = sample(population[,1],12)
+treatment = sample(population[,1],12)
+t.test(treatment,control)$p.val
+})
+head(pvals)
+hist(pvals)
+```
+
+### 1. What proportion of the p-values is below 0.05?
+```{r}
+  mean(pvals<0.06)
+```
+
+### 2. What proportion of the p-values is below 0.01?
+
+```{r}
+  mean(pvals < 0.01)
+```
+### 3. Assume you are testing the effectiveness of 20 diets on mice weight. For each of the 20 diets, you run an experiment with 10 control mice and 10 treated mice. Assume the null hypothesis, that the diet has no effect, is true for all 20 diets and that mice weights follow a normal distribution, with mean 30 grams and a standard deviation of 2 grams. Run a Monte Carlo simulation for one of these studies: Question: Now run a Monte Carlo simulation imitating the results for the experiment for all 20 diets. If you set the seed at 100, set.seed(100), how many of p-values are below 0.05?
+
+```{r}
+cases = rnorm(10,30,2)
+controls = rnorm(10,30,2)
+t.test(cases,controls)
+
+set.seed(100)
+pvals<- replicate(20,{
+  cases = rnorm(10,30,2)
+  controls = rnorm(10,30,2)
+  t.test(cases,controls)$p.value
+})
+sum(pvals<=0.05)
+```
+
+### 4. Now create a simulation to learn about the distribution of the number of p-values that are less than 0.05. In question 3, we ran the 20 diet experiment once. Now we will run the experiment 1,000 times and each time save the number of p-values that are less than 0.05. Set the seed at 100, set.seed(100), run the code from Question 3 1,000 times, and save the number of times the p-value is less than 0.05 for each of the 1,000 instances. What is the average of these numbers? This is the expected number of tests (out of the 20 we run) that we will reject when the null is true.
+```{r}
+set.seed(100)
+B = 1000
+plessthan = replicate(B,{
+  pvals = replicate(20,{
+    cases = rnorm(10,30,2)
+    controls = rnorm(10,30,2)
+    t.test(cases,controls)$p.value
+    })
+  sum(pvals<=0.05)
+})
+table(plessthan)
+
+mean(plessthan)
+```
+
+### 5. What this says is that on average, we expect some p-value to be 0.05 even when the null is true for all diets. Use the same simulation data and report for what percent of the 1,000 replications did we make more than 0 false positives?
+```{r}
+mean(plessthan>0)
+```
+
+## first chapter, exercises 3
+
+### 1. Assume the null is true and denote the p-value you would get if you ran a test as P. Define the function f(x) = Pr(P > x) . What does f(x) look like?
+#### B: the identity line
+
+### 2. In the previous exercises, we saw how the probability of incorrectly rejecting the null for at least one of 20 experiments for which the null is true, is well over 5%. Now let's consider a case in which we run thousands of tests, as we would do in a high throughput experiment. We previously learned that under the null, the probability of a p-value < p is p. If we run 8,793 independent tests, what it the probability of incorrectly rejecting at least one of the null hypothesis?
+
+```{r}
+B<-1000
+minpval <- replicate(B, min(runif(8793,0,1))<0.05)
+mean(minpval>=1)
+```
+
+### 3.Suppose we need to run 8,793 statistical tests and we want to make the probability of a mistake very small, say 5%. Use the answer to Exercise 2 to determine how small we have to change the cutoff, previously 0.05, to lower our probability of at least one mistake to be 5%.
+```{r}
+B=10000
+cutoffs = 10^seq(-7,-4,0.1) 
+prob = sapply(cutoffs,function(cutoff){
+    minpval =replicate(B, min(runif(8793,0,1))<=cutoff)
+    mean(minpval>=1)
+    })
+cutoffs[which.min(abs(prob-0.05))]
+```
+
+### 4. Make a plot of /m and 1 ???? (1 ???? )1/m for various values of m>1. Which procedure is more conservative Bonferroni's or Sidek's?
+
+***************************************************
+
+### 5. To simulate the p-value results of, say 8,792 t-tests for which the null is true, we don't actually have to generate the original data. We can generate p-values for a uniform distribution like this: 'pvals <- runif(8793,0,1)'. Using what we have learned, set the cutoff using the Bonferroni correction and report back the FWER. Set the seed at 1 and run 10,000 simulation.
+
+```{r}
+set.seed(1)
+B<-10000
+minpval <- replicate(B, min(runif(8793,0,1))<(0.05/10000))
+mean(minpval>=1)
+```
+
+### 6. Using the same seed, repeat exercise 5, but for Sidek's cutoff.
+
+```{r}
+set.seed(1)
+B<-10000
+minpval <- replicate(B, min(runif(8793,0,1))< (1-((1-.05)^ (1/10000))))
+mean(minpval>=1)
+```
+
+### 7. Compute a p-value for each gene using the function rowttests from the genefilter package.How many genes have p-values smaller than 0.05?s
+```{r}
+library(GSE5859Subset)
+data(GSE5859Subset)
+
+library(genefilter)
+?rowttests
+
+alpha<-0.05
+g <- factor(sampleInfo$group)
+pvals<-rowttests(geneExpression,g)$p.value
+sum(pvals<alpha)
+```
+
+
+### 8. Apply the Bonferroni correction to achieve a FWER of 0.05. How many genes are called significant under this procedure?
+
+```{r}
+sum(rowttests(geneExpression, as.factor(sampleInfo$group))$p.value < (0.05/nrow(geneExpression))) 
+
+```
+
+### 9. In R, we can compute q-values using the p.adjust function with the FDR option. Read the help file for p.adjust and compute how many genes achieve a q-value < 0.05 for our gene expression dataset.
+
+```{r}
+library(genefilter)
+pvals = rowttests(geneExpression, as.factor(sampleInfo$group))$p.value
+sum(p.adjust(pvals, method = "fdr", n = length(pvals))<0.05)
+```
+
+### 10. Now use the qvalue function, in the Bioconductor qvalue package, to estimate q-values using the procedure described by Storey. How many genes have q-values below 0.05?
+```{r}
+library(qvalue)
+sum(qvalue(pvals)$qvalues<0.05)
+```
+### 11. Read the help file for qvalue and report the estimated proportion of genes for which the null hypothesis is true 0 = m0/m
+```{r}
+qvalue(pvals)$pi0
+
+```
+
+### 12. The number of genes passing the q-value <0.05 threshold is larger with the q-value function than the p.adjust difference. Why is this the case? Make a plot of the ratio of these two estimates to help answer the question.
+
+```{r}
+plot(qvalue(pvals)$qvalue/p.adjust(pvals,method="fdr"))
+abline(h=qvalue(pvals)$pi0,col=2)
+
+hist(pvals,breaks=seq(0,1,len=21))
+expectedfreq <- length(pvals)/20 #per bin
+abline(h=expectedfreq*qvalue(pvals)$pi0,col=2,lty=2)
+
+```
+
+### 13. This exercise and the remaining one are more advanced. Create a Monte Carlo Simulation in which you simulate measurements from 8,793 genes for 24 samples, 12 cases and 12 controls. The for 100 genes create a difference of 1 between cases and controls. You can use the code provided below. Run this experiment 1,000 times with a Monte Carlo simulation. For each instance, compute p-values using a t-test and keep track of the number of false positives and false negatives. Compute the false positive rate and false negative rates if we use Bonferroni, q-values from p.adjust, and q-values from qvalue function. Set the seed to 1 for all three simulations. What is the false positive rate for Bonferroni?
+```{r}
+set.seed(1)
+library(qvalue)
+library(genefilter)
+n <- 24
+m <- 8793
+B <- 1000
+delta <-2
+positives <- 500
+g <- factor(rep(c(0,1),each=12))
+result <- replicate(B,{
+  mat <- matrix(rnorm(n*m),m,n)
+  mat[1:positives,1:(n/2)] <- mat[1:positives,1:(n/2)]+delta
+  pvals = rowttests(mat,g)$p.val
+  ##Bonferroni
+  FP1 <- sum(pvals[-(1:positives)]<=0.05/m)  
+  FP1
+  })
+mean(result/(m-positives))
+
+```
+This value is much smaller than 0.05 because Bonferroni controls the FWER to be 0.05, not the FDR.This control of FWER to 0.05 provides a very low false discovery rate. 
+
+### 14. What are the false negative rates for Bonferroni?
+
+```{r}
+set.seed(1)
+library(qvalue)
+library(genefilter)
+n <- 24
+m <- 8793
+B <- 1000
+delta <-2
+positives <- 500
+g <- factor(rep(c(0,1),each=12))
+result <- replicate(B,{
+  mat <- matrix(rnorm(n*m),m,n)
+  mat[1:positives,1:(n/2)] <- mat[1:positives,1:(n/2)]+delta
+  pvals = rowttests(mat,g)$p.val
+  ##Bonferroni
+  FP1 <- sum(pvals[-(1:positives)]<=0.05/m)  
+  FN1 <- sum(pvals[1:positives]>0.05/m)
+  c(FP1,FN1)
+  })
+
+mean(result[2,]/(positives))
+```
+Having a very low FDR comes at a cost. Namely that we increase our false negative rate, in this case to 76%. This means we miss including the great majority of genes for which the null is not true. This trade-off is always present when we have to pick a cutoff. 
+
+### 15. What are the false negative rates for p.adjust?
+
+```{r}
+set.seed(1)
+library(qvalue)
+library(genefilter)
+n <- 24
+m <- 8793
+B <- 1000
+delta <-2
+positives <- 500
+g <- factor(rep(c(0,1),each=12))
+result <- replicate(B,{
+  mat <- matrix(rnorm(n*m),m,n)
+  mat[1:positives,1:(n/2)] <- mat[1:positives,1:(n/2)]+delta
+  pvals = rowttests(mat,g)$p.val
+  ##Bonferroni
+  FP1 <- sum(pvals[-(1:positives)]<=0.05/m)  
+  FN1 <- sum(pvals[1:positives]>0.05/m)
+  #p.adjust q-value
+  qvals1 = p.adjust(pvals,method="fdr")
+  FP2 <- sum(qvals1[-(1:positives)]<=0.05)
+  c(FP1,FN1,FP2)
+  })
+mean(result[3,]/(m-positives))
+
+```
+
+although much higher than the FDR for Bonferroni, the FDR is substantially lower than 0.05 we were shooting for. This is because the Benjamini-Hochberg procedure gives us a bound. The larger m1, the more conservative this approximation will be.
+
+### 16. What are the false negative rates for p.adjust?
+
+
+```{r}
+set.seed(1)
+library(qvalue)
+library(genefilter)
+n <- 24
+m <- 8793
+B <- 1000
+delta <-2
+positives <- 500
+g <- factor(rep(c(0,1),each=12))
+result <- replicate(B,{
+  mat <- matrix(rnorm(n*m),m,n)
+  mat[1:positives,1:(n/2)] <- mat[1:positives,1:(n/2)]+delta
+  pvals = rowttests(mat,g)$p.val
+  ##Bonferroni
+  FP1 <- sum(pvals[-(1:positives)]<=0.05/m)  
+  FN1 <- sum(pvals[1:positives]>0.05/m)
+   #p.adjust q-value
+  qvals1 = p.adjust(pvals,method="fdr")
+  FP2 <- sum(qvals1[-(1:positives)]<=0.05)
+  FN2 <- sum(qvals1[1:positives]>0.05)
+  c(FP1,FN1,FP2,FN2)
+  })
+
+mean(result[4,]/(positives))
+```
+
+Here we see the potential advantage of FDR over FWER, in particular if our goal is discovery. The false negative rate is much reduced now from 0.76 to 0.08
+
+
+### 17. What are the false positive rates for qvalues?
+
+```{r}
+set.seed(1)
+library(qvalue)
+library(genefilter)
+n <- 24
+m <- 8793
+B <- 1000
+delta <-2
+positives <- 500
+g <- factor(rep(c(0,1),each=12))
+result <- replicate(B,{
+  mat <- matrix(rnorm(n*m),m,n)
+  mat[1:positives,1:(n/2)] <- mat[1:positives,1:(n/2)]+delta
+  pvals = rowttests(mat,g)$p.val
+  ##Bonferroni
+  FP1 <- sum(pvals[-(1:positives)]<=0.05/m)  
+  FN1 <- sum(pvals[1:positives]>0.05/m)
+   #p.adjust q-value
+  qvals1 = p.adjust(pvals,method="fdr")
+  FP2 <- sum(qvals1[-(1:positives)]<=0.05)
+  FN2 <- sum(qvals1[1:positives]>0.05)
+  #qvalue q-value
+  qvals2 = qvalue(pvals)$qvalue
+  FP3 <- sum(qvals2[-(1:positives)]<=0.05)
+  c(FP1,FN1,FP2,FN2,FP3)
+  })
+
+
+mean(result[5,]/(m-positives))
+```
+
+
+Here we see that by estimating pi0 this approach gets closer to the targeted FDR of 0.05.
+
+
+### 18. What are the false negative rates for qvalues?
+
+```{r}
+set.seed(1)
+library(qvalue)
+library(genefilter)
+n <- 24
+m <- 8793
+B <- 1000
+delta <-2
+positives <- 500
+g <- factor(rep(c(0,1),each=12))
+result <- replicate(B,{
+  mat <- matrix(rnorm(n*m),m,n)
+  mat[1:positives,1:(n/2)] <- mat[1:positives,1:(n/2)]+delta
+  pvals = rowttests(mat,g)$p.val
+  ##Bonferroni
+  FP1 <- sum(pvals[-(1:positives)]<=0.05/m)  
+  FN1 <- sum(pvals[1:positives]>0.05/m)
+   #p.adjust q-value
+  qvals1 = p.adjust(pvals,method="fdr")
+  FP2 <- sum(qvals1[-(1:positives)]<=0.05)
+  FN2 <- sum(qvals1[1:positives]>0.05)
+  #qvalue q-value
+  qvals2 = qvalue(pvals)$qvalue
+  FP3 <- sum(qvals2[-(1:positives)]<=0.05)
+  FN3 <- sum(qvals2[1:positives]>0.05)  
+  c(FP1,FN1,FP2,FN2,FP3,FN3)
+  })
+
+mean(result[6,]/(positives))
+
+```
+
+Here we see that by creating a list of an FDR closer to 0.05 we are less conservative and thus decrease the false negative rate further.
+
+
+## First chapter, exercises page 279
+```{r}
+source("http://www.bioconductor.org/biocLite.R")
+
+
+library(rafalib)
+install_bioc("SpikeInSubset")
+library(SpikeInSubset)
+data(mas133)
+
+e <- exprs(mas133)
+plot(e[,1],e[,2],main=paste0("corr=",signif(cor(e[,1],e[,2]),3)),cex=0.5)
+k <- 3000
+b <- 1000 #a buffer
+polygon(c(-b,k,k,-b),c(-b,-b,k,k),col="red",density=0,border="red")
+```
+
+## 1. What proportion of the points are inside the box?
+```{r}
+mean(e[,1]<k & e[,2]<k)
+```
+
+## 2. What is an advantage of taking the log?
+### A: the tails do not dominate the plot: 95% of data is not in a tiny section of plot.
+```{r}
+plot(log2(e[,1]),log2(e[,2]))
+k <- log2(3000)
+b <- log2(0.5)
+polygon(c(b,k,k,b),c(b,b,k,k),col="red",density=0,border="red")
+```
+
+## 3. What is the standard deviation of the log ratios for this comparison?
+```{r}
+e <- log2(exprs(mas133))
+plot((e[,1]+e[,2])/2,e[,2]-e[,1],cex=0.5)
+
+sd(e[,2]-e[,1])
+##OR
+sqrt(mean((e[,2]-e[,1])^2))
+
+```
+
+## 4. How many fold changes above 2 do we see?
+```{r}
+sum(abs(e[,2]-e[,1])>1)
+
+```
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Distance and Dimension Reduction
+
+##Second chapter, first exercises
+```{r}
+library(tissuesGeneExpression)
+data(tissuesGeneExpression)
+head(e)
+head(tissue)
+```
+
+
+## 1. How many biological replicates for hippocampus?
+### There are 31 biological replicates for the hippocampus
+```{r}
+sum(tissue=="hippocampus")
+table(tissue)
+```
+
+## 2. What is the distance between samples 3 and 45?
+### The distance between 3 & 45 is 152.5662.
+```{r}
+sqrt( crossprod(e[,3]-e[,45]) )
+```
+
+## 3. What is the distance between gene 210486_at and 200805_at
+### The distance between gene 210486_at and 200805_at is 41.01153.
+```{r}
+sqrt(crossprod(e["210486_at",]-e["200805_at",]))
+```
+
+## 4. If I run the command (don't run it!): d = as.matrix( dist(e) ), how many cells (number of rows times number of columns) will this matrix have?
+### This matrix would have 493506225 cells.
+```{r}
+22215*22215
+```
+
+## 5. Compute the distance between all pair of samples: d = dist( t(e) ) Read the help file for dist. How many distances are stored in d? Hint: What is the length of d?
+### 17766 distances are stored in d
+```{r}
+d = dist(t(e))
+length(d)
+```
+
+## Why is the answer to exercise 5 not ncol(e)^2?
+### the answer is c) Because we take advantage of symmetry: only lower triangular matrix is stored thus only ncol(e)*(ncol(e)-1)/2 values.
+
+
+# second chapter, second exercises
+
+```{r}
+library(tissuesGeneExpression)
+data(tissuesGeneExpression)
+```
+
+
+## 1. What is the correlation between the first column of U and m?
+### The correlation is -0.9999998
+```{r}
+s = svd(e)
+m = rowMeans(e)
+cor(s$u[,1],m)
+```
+
+## 2. Which of the following gives us the same as diag(s$d)%*%t(s$v) ?
+### s$d * t(s$v) outputs the same thing as diag(s$d)%*%t(s$v).
+```{r}
+ newmeans = rnorm(nrow(e)) ##random values we will add to create new means
+ newe = e+newmeans ##we change the means
+ sqrt(crossprod(e[,3]-e[,45]))
+ sqrt(crossprod(newe[,3]-newe[,45]))
+ 
+y = e - rowMeans(e)
+s = svd(y)
+ 
+resid = y - s$u %*% diag(s$d) %*% t(s$v)
+max(abs(resid))
+
+x=matrix(rep(c(1,2),each=5),5,2)
+x*c(1:5)
+
+sweep(x,1,1:5,"*")
+diag(s$d)%*%t(s$v)
+s$d * t(s$v)
+```
+## 3. If we define vd = t(s$d * t(s$v)), then which of the following is not the same UDV ? 
+
+### s$u %*% s$d * t(s$v) is not the same as UDV⊤
+```{r}
+z = s$d * t(s$v)
+
+sqrt(crossprod(e[,3]-e[,45]))
+sqrt(crossprod(y[,3]-y[,45]))
+sqrt(crossprod(z[,3]-z[,45]))
+
+```
+
+## 4. What is the difference, in absolute value, between the actual distance: sqrt(crossprod(e[,3]-e[,45])) and the approximation using only two dimensions of z ?
+```{r}
+realdistance = sqrt(crossprod(e[,3]-e[,45]))
+approxdistance = sqrt(crossprod(z[1:2,3]-z[1:2,45]))
+abs(realdistance - approxdistance)
+
+```
+40.62416
+
+## 5. How many dimensions do we need to use for the approximation in exercise 4 to be within 10%?
+```{r}
+ks = 1:189
+realdistance = sqrt(crossprod(e[,3]-e[,45]))
+approxdistances = sapply(ks,function(k){
+    sqrt(crossprod(z[1:k,3,drop=FALSE]-z[1:k,45,drop=FALSE] )) 
+  })
+percentdiff = 100*abs(approxdistances - realdistance)/realdistance
+plot(ks,percentdiff) ##take a look
+min(ks[which(percentdiff < 10)])
+```
+7 dimensions
+
+## 6. Compute distances between sample 3 and all other samples.
+```{r}
+distances = sqrt(apply(e[,-3]-e[,3],2,crossprod))
+```
+
+## 7. Recompute this distance using the 2 dimensional approximation. What is the Spearman correlation between this approximate distance and the actual distance?
+
+### The Spearman correlation between the approximate distance and the actual distance is 0.8598592
+```{r}
+approxdistances = sqrt(apply(z[1:2,-3]-z[1:2,3],2,crossprod))
+plot(distances,approxdistances)
+
+cor(distances,approxdistances,method="spearman")
+```
+
+
+
+# second chapter, third exercises
+## 1. What is the absolute value of the correlation between the first dimension of z and the first dimension in mds?
+
+### The absolute value of the correlation between the first dimension of z and the first dimension in mds is 0.04008834
+```{r}
+d = dist(t(e))
+mds = cmdscale(d)
+cor(mds[, 1], z[, 1])
+```
+
+## 2. What is the absolute value of the correlation between the second dimension of z and the second dimension in mds?
+
+### The absolute value of the correlation between the second dimension of z and thesecond dimension in mds is 0.02099933.
+```{r}
+d = dist(t(e))
+mds = cmdscale(d)
+cor(mds[, 2], z[, 2])
+```
+
+## 3. Which dimension of z most correlates with the outcome sampleInfo$group ?
+```{r}
+library(GSE5859Subset) 
+data(GSE5859Subset)
+s = svd(geneExpression-rowMeans(geneExpression))
+z = s$d * t(s$v)
+```
+
+## What is this max correlation?
+### The max correlation is 0.6236858
+```{r}
+max(cor(sampleInfo$g,t(z)))
+```
+
+## 5. Which dimension of z has the second highest correlation with the outcome sampleInfo$group?
+
+### The dimension of z which has the second highest correlation with the outcome sampleInfo$group is dimension 6.
+```{r}
+which.max(cor(sampleInfo$g,t(z))[-1]) + 1
+```
+
+## 6. Which dimension of z has the second highest correlation with the outcome month? 
+
+### The first dimension has the second highest correlation with the outcome month
+```{r}
+sampleInfo$date
+month = format( sampleInfo$date, "%m")
+month = factor( month)
+which.max(cor( as.numeric(month), t(z)))
+```
+
+
+## 7. What is this correlation?
+### The correlation of the dimension of z and the month is 0.8297915.
+```{r}
+month = format( sampleInfo$date, "%m")
+month = factor( month)
+max(cor( as.numeric(month), t(z)))
+```
+
+## 8. Which chromosome looks different from the rest? Copy and paste the name as it appears in geneAnnotation. 
+
+## Based on the results, my guess as to what sampleInfo$group represents is chrY.
+
+```{r}
+table(sampleInfo$g,month)
+result = split(s$u[,6],geneAnnotation$CHR)
+result = result[ which(names(result)!="chrUn") ]
+boxplot(result,range=0)
+
+boxplot(result,range=0,ylim=c(-0.025,0.025))
+
+medians = sapply(result,median)
+names(result)[ which.max(abs(medians)) ]
+```
